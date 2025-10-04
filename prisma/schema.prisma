@@ -1,0 +1,221 @@
+// ============================================
+// NUVOYA8 SAAS FACTORY - PRISMA SCHEMA
+// Multi-tenant architecture with app_id isolation
+// Compatible with Supabase Auth
+// SIMPLE: mêmes noms en DB et en code
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// CORE TABLES - Multi-tenant
+// ============================================
+
+/// Table des applications SaaS
+/// Chaque app = un SaaS déployé
+model App {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  domain      String?  @unique
+  logo_url    String?
+  
+  // Branding
+  primary_color   String  @default("#3b82f6")
+  secondary_color String  @default("#8b5cf6")
+  theme           String  @default("theme-sass")
+  
+  // Metadata
+  description String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  
+  // Relations
+  users         User[]
+  subscriptions Subscription[]
+  tasks         Task[]
+  files         File[]
+  
+  @@index([slug])
+  @@index([domain])
+  @@map("apps")
+}
+
+// ============================================
+// USER MANAGEMENT - Sync avec auth.users
+// ============================================
+
+/// Table users synchronisée avec auth.users de Supabase
+model User {
+  id         String  @id
+  app_id     String
+  email      String
+  name       String?
+  avatar_url String?
+  
+  // User metadata
+  role            String   @default("user")
+  onboarding_done Boolean  @default(false)
+  email_verified  Boolean  @default(false)
+  mfa_enabled     Boolean  @default(false)
+  
+  // Timestamps
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  last_login_at DateTime?
+  
+  // Relations
+  app          App            @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  subscription Subscription?
+  tasks        Task[]
+  files        File[]
+  
+  @@unique([app_id, email])
+  @@index([app_id])
+  @@index([email])
+  @@map("users")
+}
+
+// ============================================
+// SUBSCRIPTIONS - Lemon Squeezy
+// ============================================
+
+/// Subscriptions gérées par Lemon Squeezy
+model Subscription {
+  id      String @id @default(cuid())
+  app_id  String
+  user_id String @unique
+  
+  // Lemon Squeezy IDs
+  lemonsqueezy_id          String  @unique
+  lemonsqueezy_order_id    String?
+  lemonsqueezy_customer_id String?
+  
+  // Subscription details
+  product_name String
+  variant_name String?
+  status       String
+  
+  // Pricing
+  price          Int
+  currency       String @default("EUR")
+  interval       String
+  interval_count Int    @default(1)
+  
+  // Dates
+  trial_ends_at DateTime?
+  renews_at     DateTime?
+  ends_at       DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  cancelled_at  DateTime?
+  
+  // URLs
+  update_payment_method_url String?
+  
+  // Relations
+  app  App  @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([app_id])
+  @@index([user_id])
+  @@index([lemonsqueezy_id])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// ============================================
+// FEATURE EXAMPLES - Task Management
+// ============================================
+
+/// Example: Task management feature
+model Task {
+  id          String   @id @default(cuid())
+  app_id      String
+  user_id     String
+  
+  title       String
+  description String?
+  status      String   @default("todo")
+  priority    String   @default("medium")
+  due_date    DateTime?
+  
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  
+  // Relations
+  app  App  @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([app_id])
+  @@index([user_id])
+  @@index([status])
+  @@map("tasks")
+}
+
+// ============================================
+// FEATURE EXAMPLES - File Management
+// ============================================
+
+/// Example: File storage feature
+model File {
+  id        String   @id @default(cuid())
+  app_id    String
+  user_id   String
+  
+  name      String
+  path      String
+  bucket    String   @default("files")
+  size      Int
+  mime_type String
+  
+  is_public Boolean  @default(false)
+  
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  
+  // Relations
+  app  App  @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([app_id])
+  @@index([user_id])
+  @@index([bucket])
+  @@map("files")
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+/// Log des actions importantes
+model AuditLog {
+  id         String   @id @default(cuid())
+  app_id     String?
+  user_id    String?
+  
+  action     String
+  entity     String
+  entity_id  String?
+  
+  metadata   Json?
+  ip_address String?
+  user_agent String?
+  
+  created_at DateTime @default(now())
+  
+  @@index([app_id])
+  @@index([user_id])
+  @@index([action])
+  @@index([created_at])
+  @@map("audit_logs")
+}
