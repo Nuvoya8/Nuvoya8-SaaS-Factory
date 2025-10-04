@@ -18,25 +18,37 @@ export default function RegisterPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-
+    
         if (!acceptedTerms) {
             setError('You must accept the Terms of Service and Privacy Policy');
             return;
         }
-
+    
         if (password !== confirmPassword) {
             setError("Passwords don't match");
             return;
         }
-
+    
         setLoading(true);
-
+    
         try {
-            const supabase = await createSPASassClient();
-            const { error } = await supabase.registerEmail(email, password);
-
+            const sassClient = await createSPASassClient();
+            
+            // Appeler directement la méthode Supabase sous-jacente
+            const { error } = await sassClient.getSupabaseClient().auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        app_id: process.env.NEXT_PUBLIC_APP_ID,
+                        name: email,
+                        app_name: process.env.NEXT_PUBLIC_APP_NAME,
+                    },
+                },
+            });
+    
             if (error) throw error;
-
+    
             router.push('/auth/verify-email');
         } catch (err: Error | unknown) {
             if(err instanceof Error) {
