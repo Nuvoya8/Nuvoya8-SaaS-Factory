@@ -3,9 +3,10 @@
  * 
  * Wrappers autour de Supabase Auth qui ajoutent automatiquement l'app_id
  * SIMPLE: Mêmes noms de colonnes partout (snake_case)
+ * 
+ * NOTE: Pas d'audit logs ici (Prisma = backend only)
+ * Les logs seront créés via API routes
  */
-
-import { createAuditLog, getCurrentAppId } from '@/lib/prisma'
 
 const APP_ID = process.env.NEXT_PUBLIC_APP_ID!
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME!
@@ -40,19 +41,6 @@ export async function signUpWithEmail(supabase: any, params: SignUpParams) {
     throw error
   }
 
-  if (data.user) {
-    await createAuditLog({
-      user_id: data.user.id,
-      action: 'user.signup',
-      entity: 'user',
-      entity_id: data.user.id,
-      metadata: {
-        email: params.email,
-        method: 'email',
-      },
-    })
-  }
-
   return data
 }
 
@@ -85,17 +73,6 @@ export async function signInWithEmail(supabase: any, params: SignInParams) {
     }
 
     await updateLastLogin(data.user.id)
-
-    await createAuditLog({
-      user_id: data.user.id,
-      action: 'user.signin',
-      entity: 'user',
-      entity_id: data.user.id,
-      metadata: {
-        email: params.email,
-        method: 'email',
-      },
-    })
   }
 
   return data
@@ -135,17 +112,6 @@ export async function signInWithOAuth(supabase: any, params: OAuthParams) {
 // ============================================
 
 export async function signOut(supabase: any) {
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (user) {
-    await createAuditLog({
-      user_id: user.id,
-      action: 'user.signout',
-      entity: 'user',
-      entity_id: user.id,
-    })
-  }
-
   const { error } = await supabase.auth.signOut()
 
   if (error) {
@@ -177,15 +143,6 @@ export async function updatePassword(supabase: any, newPassword: string) {
   if (error) {
     console.error('Update password error:', error)
     throw error
-  }
-
-  if (data.user) {
-    await createAuditLog({
-      user_id: data.user.id,
-      action: 'user.password_updated',
-      entity: 'user',
-      entity_id: data.user.id,
-    })
   }
 
   return data

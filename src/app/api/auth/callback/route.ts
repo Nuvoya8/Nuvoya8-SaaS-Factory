@@ -11,7 +11,28 @@ export async function GET(request: Request) {
         const client = supabase.getSupabaseClient()
 
         // Exchange the code for a session
-        await supabase.exchangeCodeForSession(code)
+        const { error } = await supabase.exchangeCodeForSession(code)
+        
+        if (error) {
+            console.error('Error exchanging code for session:', error)
+            return NextResponse.redirect(new URL('/auth/login?error=callback_error', request.url))
+        }
+
+        // Vérifier que le user appartient à cette app
+        const { data: { user }, error: userError } = await client.auth.getUser()
+
+        if (userError || !user) {
+            return NextResponse.redirect(new URL('/auth/login?error=no_user', request.url))
+        }
+
+        const user_app_id = user.user_metadata?.app_id
+        const current_app_id = process.env.NEXT_PUBLIC_APP_ID
+
+        if (user_app_id !== current_app_id) {
+            console.error('User does not belong to this app')
+            await client.auth.signOut()
+            return NextResponse.redirect(new URL('/auth/login?error=wrong_app', request.url))
+        }
 
         // Check MFA status
         const { data: aal, error: aalError } = await client.auth.mfa.getAuthenticatorAssuranceLevel()
