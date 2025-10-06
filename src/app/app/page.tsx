@@ -70,6 +70,19 @@ export default function DashboardContent() {
                                 <p className="text-sm text-gray-500">Check out example features</p>
                             </div>
                         </Link>
+
+                        <Link
+                            href="/app/n8n-test"
+                            className="flex items-center gap-3 p-4 border rounded-lg hover:bg-yellow-50 transition-colors border-yellow-200"
+                        >
+                            <div className="p-2 bg-yellow-50 rounded-full">
+                                <span className="text-yellow-600">⚡</span>
+                            </div>
+                            <div>
+                                <h3 className="font-medium">Test N8N</h3>
+                                <p className="text-sm text-gray-500">Test workflow integration</p>
+                            </div>
+                        </Link>
                     </div>
                 </CardContent>
             </Card>

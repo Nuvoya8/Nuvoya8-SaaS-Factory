@@ -18,10 +18,34 @@ export class SassClient {
     }
 
     async loginEmail(email: string, password: string) {
-        return this.client.auth.signInWithPassword({
+        // 1. Se connecter
+        const { data, error } = await this.client.auth.signInWithPassword({
             email: email,
             password: password
         });
+
+        if (error) {
+            return { data, error };
+        }
+
+        // 2. Vérifier que le user appartient à cette app
+        const currentAppId = process.env.NEXT_PUBLIC_APP_ID;
+        const userAppId = data?.user?.user_metadata?.app_id;
+
+        if (currentAppId && userAppId && userAppId !== currentAppId) {
+            // Déconnecter immédiatement si mauvais app_id
+            await this.client.auth.signOut();
+            return {
+                data: null,
+                error: {
+                    message: 'This account does not belong to this application',
+                    name: 'AuthError',
+                    status: 403,
+                } as any
+            };
+        }
+
+        return { data, error };
     }
 
     async registerEmail(email: string, password: string) {

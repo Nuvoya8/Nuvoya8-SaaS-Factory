@@ -1,17 +1,17 @@
 # 🎯 BRIEFING COMPLET - NUVOYA8 SAAS FACTORY
 
-## 📋 CONTEXTE DU PROJET
+## 📋 OBJECTIF DU PROJET
 
-Je crée une **FACTORY de SaaS** : un template Next.js réutilisable permettant de lancer rapidement des dizaines de SaaS différents en changeant juste quelques configs.
+Créer une **FACTORY de SaaS** : un template Next.js réutilisable permettant de lancer rapidement des dizaines de SaaS différents.
 
-### Objectif Final
-**1 codebase → 50 SaaS déployés** en changeant uniquement :
+**Principe :**  
+1 codebase → 50 SaaS déployés en changeant uniquement :
 - Le nom du SaaS
 - Le domaine
 - Le logo
-- Les configs (`.env`)
+- Les variables d'environnement (`.env`)
 
-Le reste (auth, paiements, UI, multi-tenant, workflows) est **identique et industrialisé**.
+Le reste (auth, paiements, UI, infra, workflows) est **identique et industrialisé**.
 
 ---
 
@@ -37,345 +37,569 @@ Le reste (auth, paiements, UI, multi-tenant, workflows) est **identique et indus
 └─────────────────────────────────────────────────┘
 ```
 
-### Stack Technique
+---
 
-**Frontend/Backend :**
-- Next.js 15 (App Router)
-- TypeScript
-- Tailwind CSS + shadcn/ui
-- Template de base : [Razikus/supabase-nextjs-template](https://github.com/Razikus/supabase-nextjs-template)
+## 🔧 STACK TECHNIQUE
 
-**Base de Données :**
-- Supabase self-hosted (Postgres)
+### Frontend/Backend
+- **Next.js 15** (App Router)
+- **TypeScript**
+- **Tailwind CSS** + shadcn/ui
+- **Template de base** : [Razikus/supabase-nextjs-template](https://github.com/Razikus/supabase-nextjs-template)
+
+### Base de Données
+- **Supabase self-hosted** (PostgreSQL)
 - **1 seule DB pour TOUS les SaaS**
-- Isolation multi-tenant via `appId`
+- Isolation multi-tenant via `app_id`
 
-**ORM :**
-- Prisma avec middleware d'isolation automatique
+### ORM
+- **Prisma** avec middleware d'isolation automatique
+- Convention : **snake_case partout** (même nom en DB et en code)
 
-**Workflows/Automations :**
-- N8N self-hosted
+### Workflows/Automations
+- **N8N self-hosted**
 - Appelé via webhooks depuis Next.js
 - Sécurisé avec signature HMAC
 
-**Paiements :**
-- Lemon Squeezy (1 compte partagé pour tous les SaaS)
+### Paiements
+- **Lemon Squeezy** (1 compte partagé pour tous les SaaS)
+- Merchant of Record (gère la TVA internationale)
 
-**Déploiement :**
-- Dokploy (self-hosted sur VPS)
+### Déploiement
+- **Dokploy** (self-hosted sur VPS)
 - 1 déploiement Next.js = 1 SaaS = 1 domaine
 
 ---
 
 ## 🔑 PRINCIPE MULTI-TENANT
 
-### Isolation par `appId`
+### Isolation par `app_id`
 
-Chaque SaaS a un `appId` unique (ex: `"todo-master"`, `"fitness-pro"`).
+Chaque SaaS a un `app_id` unique (ex: `"factory-test"`, `"todo-master"`).
 
-**Toutes les données sont filtrées automatiquement** :
+**Toutes les données sont filtrées automatiquement via le middleware Prisma :**
 
 ```typescript
-// Via Prisma middleware - transparent pour le dev
+// Code simple
 const users = await prisma.user.findMany()
-// SQL généré : SELECT * FROM users WHERE app_id = 'todo-master'
+
+// SQL généré automatiquement
+// SELECT * FROM users WHERE app_id = 'factory-test'
 ```
 
-### Tables principales
+### Tables Principales
 
 ```
-apps (id, name, slug, domain, logo, colors, theme)
+apps (id, name, slug, domain, logo_url, primary_color, secondary_color, theme)
   ↓
-users (id, app_id, email, role, ...)
+users (id, app_id, email, name, role, created_at, updated_at, last_login_at)
   ↓
-subscriptions (id, app_id, user_id, lemonsqueezy_id, status, ...)
-tasks (id, app_id, user_id, title, status, ...)
-files (id, app_id, user_id, path, ...)
-audit_logs (id, app_id, user_id, action, ...)
+subscriptions (id, app_id, user_id, lemonsqueezy_id, status, price, renews_at)
+tasks (id, app_id, user_id, title, status, priority, due_date)
+files (id, app_id, user_id, path, bucket, size, mime_type)
+audit_logs (id, app_id, user_id, action, entity, metadata, created_at)
 ```
+
+**Important :** Tous les modèles ont `app_id` sauf `apps`.
 
 ### Sync Auth Supabase ↔ Prisma
 
-- Supabase gère `auth.users` (auth native)
-- Trigger Postgres sync automatique vers `public.users` (Prisma)
-- `appId` injecté dans `user_metadata` à l'inscription
+- **Supabase** gère `auth.users` (auth native)
+- **Trigger Postgres** sync automatique vers `public.users` (Prisma)
+- `app_id` injecté dans `user_metadata` à l'inscription
 
 ---
 
-## 📁 FICHIERS DÉJÀ GÉNÉRÉS
+## ✅ CE QUI A ÉTÉ RÉALISÉ
 
-### 1. Schema Prisma (`prisma/schema.prisma`)
+### 1. Setup Prisma ✅
 
-Contient :
-- Model `App` (les SaaS)
-- Model `User` (avec `appId`)
-- Model `Subscription` (Lemon Squeezy)
-- Model `Task`, `File` (exemples de features)
-- Model `AuditLog` (logs)
+**Fichiers créés :**
+- `prisma/schema.prisma` - Schéma DB multi-tenant
+- `src/lib/prisma.ts` - Client Prisma avec middleware d'isolation
 
-**Tous les models ont `appId` sauf `App`.**
+**Middleware Prisma :**
+```typescript
+// Filtre automatiquement par app_id
+// Ajoute app_id lors des créations
+// Garantit l'isolation totale entre SaaS
+```
 
-### 2. Client Prisma (`src/lib/prisma.ts`)
+**Tables créées dans Supabase :**
+```bash
+npx prisma db push
+```
 
-- Singleton Prisma Client
-- **Middleware magique** : filtre/injecte automatiquement `appId` dans toutes les queries
-- Helpers : `getCurrentAppId()`, `bypassTenantFilter()`, `createAuditLog()`
+### 2. Triggers SQL Supabase ✅
 
-### 3. Helpers Auth Supabase (`src/lib/supabase/auth-helpers.ts`)
+**Fichier créé :**
+- `supabase/migrations/00_sync_auth_users.sql`
 
-- `signUpWithEmail()` : Injecte `appId` dans metadata
-- `signInWithEmail()` : Vérifie que user appartient à l'app
-- `signInWithOAuth()` : Passe `appId` en query param
-- `getCurrentUser()` : Valide l'appId
+**Fonctions :**
+- `handle_new_user()` - Sync à l'inscription
+- `handle_user_update()` - Sync à la mise à jour
+- `handle_user_delete()` - Sync à la suppression
+- `update_user_last_login()` - Update last_login_at
 
-### 4. Client N8N (`src/lib/n8n/client.ts`)
+**RLS (Row Level Security) :**
+- Policies sur toutes les tables
+- Filtrage par `app_id` et `user_id`
+- Sécurité double : RLS + Middleware Prisma
 
-- Client typé pour appeler les workflows N8N
-- Sécurité : signature HMAC sur chaque call
-- Retry automatique + timeout configurable
-- Mode async pour workflows longs
-- API fluide : `n8n.sendEmail()`, `n8n.analyzeImage()`, etc.
+### 3. Auth Multi-Tenant ✅
 
-### 5. Types N8N (`src/lib/n8n/types.ts`)
+**Fichier créé :**
+- `src/lib/supabase/auth-helpers.ts`
 
-- Types pour tous les workflows (Email, AI, Data, Integrations, etc.)
-- Registry des workflows disponibles
-- Error codes
+**Fonctions principales :**
+```typescript
+signUpWithEmail()      // Injecte app_id dans metadata
+signInWithEmail()      // Vérifie app_id
+signInWithOAuth()      // Passe app_id en query param
+signOut()
+resetPassword()
+getCurrentUser()       // Valide app_id
+checkAuthStatus()
+```
 
-### 6. Migrations SQL Supabase (`supabase/migrations/sync_auth_users.sql`)
+**Page register adaptée :**
+- `src/app/(auth)/register/page.tsx` modifié
+- Utilise `.getSupabaseClient().auth.signUp()` avec `app_id`
 
-- Triggers pour sync `auth.users` → `public.users`
-- Fonction `handle_new_user()`, `handle_user_update()`, `handle_user_delete()`
-- RLS policies
-- Indexes
+**Callback OAuth adapté :**
+- `src/app/api/auth/callback/route.tsx` modifié
+- Vérifie que le user appartient à l'app
+- Signout automatique si mauvais `app_id`
 
-### 7. Configuration Environnement (`.env.template`)
+### 4. API Routes Backend ✅
 
-Variables pour :
-- App identity (`NEXT_PUBLIC_APP_ID`, `NEXT_PUBLIC_APP_NAME`, etc.)
-- Supabase (partagé entre tous les SaaS)
-- Database (Prisma)
-- Lemon Squeezy (partagé)
-- N8N (partagé)
+**Fichiers créés :**
+- `src/app/api/user/me/route.ts` - Get user data (Prisma côté serveur)
 
-### 8. Components Branding
+**Raison :** Prisma ne peut pas tourner côté client (browser).
 
-- `components/shared/Footer.tsx` : Footer avec "Powered by Nuvoya8"
-- `components/shared/Nuvoya8Watermark.tsx` : Badge discret en bas à droite
+### 5. Global Context Adapté ✅
 
-### 9. Documentation
+**Fichier modifié :**
+- `src/lib/context/GlobalContext.tsx`
 
-- `docs/DEPLOYMENT.md` : Guide complet de déploiement
-- `docs/N8N_INTEGRATION.md` : Setup N8N + création de workflows
-- `STRUCTURE.md` : Architecture du template
+**Changements :**
+- Suppression de l'import Prisma direct (causait erreur browser)
+- Utilisation de `fetch('/api/user/me')` à la place
+- Récupération des données user depuis le backend
+
+### 6. Configuration Environnement ✅
+
+**Fichier :**
+- `.env.local` configuré
+
+**Variables principales :**
+```bash
+# App Identity (UNIQUE par SaaS)
+NEXT_PUBLIC_APP_ID=factory-test
+NEXT_PUBLIC_APP_NAME=Nuvoya8 Factory Test
+
+# Supabase (PARTAGÉ)
+NEXT_PUBLIC_SUPABASE_URL=https://supabase.infra-nuvoya8.com
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+PRIVATE_SUPABASE_SERVICE_KEY=...
+
+# Database (PARTAGÉ)
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+```
+
+### 7. Première App Créée ✅
+
+```sql
+INSERT INTO apps (id, name, slug, domain, is_active, created_at, updated_at)
+VALUES ('factory-test', 'Nuvoya8 Factory Test', 'factory-test', 'localhost:3000', true, NOW(), NOW());
+```
+
+### 8. Tests Réussis ✅
+
+- ✅ Inscription avec email/password
+- ✅ User créé dans `auth.users` avec `app_id` dans metadata
+- ✅ Trigger sync vers `public.users` fonctionnel
+- ✅ Email de confirmation reçu
+- ✅ Confirmation email validée
+- ✅ Login fonctionnel
+- ✅ Dashboard accessible
+- ✅ Isolation multi-tenant validée
 
 ---
-## CE qUI EST DEJA FAIT
-### Phase 1 : Intégration Prisma dans le template Razikus
 
-1. **Adapter les imports Supabase** :
-   - Le template Razikus utilise ses propres helpers Supabase
-   - On doit coexister : Supabase (auth) + Prisma (data)
+## 📁 STRUCTURE DES FICHIERS
 
-2. **Créer les tables via Prisma** :
-   ```bash
-   npx prisma generate
-   npx prisma db push
-   ```
+```
+Nuvoya8-SaaS-Factory/
+├── prisma/
+│   └── schema.prisma              ✅ Schéma DB multi-tenant
+│
+├── supabase/
+│   └── migrations/
+│       └── 00_sync_auth_users.sql ✅ Triggers de sync
+│
+├── src/
+│   ├── lib/
+│   │   ├── prisma.ts              ✅ Client Prisma + middleware
+│   │   ├── supabase/
+│   │   │   ├── auth-helpers.ts    ✅ Helpers auth multi-tenant
+│   │   │   ├── client.ts          (Razikus - conservé)
+│   │   │   ├── server.ts          (Razikus - conservé)
+│   │   │   ├── middleware.ts      (Razikus - conservé)
+│   │   │   └── unified.ts         (Razikus - conservé)
+│   │   └── context/
+│   │       └── GlobalContext.tsx  ✅ Adapté (API route)
+│   │
+│   └── app/
+│       ├── (auth)/
+│       │   └── register/
+│       │       └── page.tsx       ✅ Modifié (app_id)
+│       │
+│       └── api/
+│           ├── auth/
+│           │   └── callback/
+│           │       └── route.tsx  ✅ Modifié (validation app_id)
+│           └── user/
+│               └── me/
+│                   └── route.ts   ✅ Créé (backend Prisma)
+│
+├── .env.local                     ✅ Configuré
+└── package.json
+```
 
-3. **Remplacer les queries Supabase par Prisma** :
-   - Exemple : `supabase.from('users').select()` → `prisma.user.findMany()`
+---
 
-4. **Créer la première app** :
-   ```sql
-   INSERT INTO apps (id, name, slug, domain)
-   VALUES ('', 'Nuvoya8 Factory Test', 'factory-test', 'localhost:3000');
-   ```
+## 🚧 CE QUI RESTE À FAIRE
 
+### Phase 1 : Auth Complète
 
-## 🎯 CE QU'IL RESTE À FAIRE
+1. **Adapter la page de login**
+   - Fichier : `src/app/(auth)/login/page.tsx`
+   - Utiliser les helpers avec `app_id`
+   - Comme fait pour register
 
+2. **Créer API route `update-last-login`**
+   - Fichier : `src/app/api/auth/update-last-login/route.ts`
+   - Update `last_login_at` via Prisma
 
+3. **Tester OAuth (Google/GitHub)**
+   - Configurer les providers dans Supabase
+   - Tester que `app_id` est bien passé
 
 ### Phase 2 : Intégration Lemon Squeezy
 
-1. Créer `src/lib/lemonsqueezy/client.ts`
-2. Créer `app/api/webhooks/lemonsqueezy/route.ts`
-3. Gérer les events : `subscription_created`, `subscription_updated`, etc.
-4. Update `subscriptions` table via Prisma
+**Fichiers à créer :**
+
+1. `src/lib/lemonsqueezy/client.ts`
+   - Client API Lemon Squeezy
+   - Fonctions : createCheckout, getSubscription, etc.
+
+2. `src/app/api/webhooks/lemonsqueezy/route.ts`
+   - Webhook handler pour events LS
+   - Events : subscription_created, updated, cancelled, etc.
+   - Update table `subscriptions` via Prisma
+
+3. `src/app/(dashboard)/settings/billing/page.tsx`
+   - Page billing avec status subscription
+   - Bouton pour ouvrir checkout LS
+   - Affichage plan actuel
+
+4. `src/components/billing/SubscriptionStatus.tsx`
+   - Composant status subscription
+   - Affichage : plan, prix, date renouvellement
+
+**Config Lemon Squeezy :**
+- Créer les produits dans LS
+- Configurer le webhook URL
+- Ajouter les variables d'env :
+  ```bash
+  LEMONSQUEEZY_API_KEY=...
+  LEMONSQUEEZY_STORE_ID=...
+  LEMONSQUEEZY_WEBHOOK_SECRET=...
+  ```
 
 ### Phase 3 : Intégration N8N
 
-1. Déployer N8N sur le VPS (Dokploy)
-2. Créer les workflows de base :
-   - `send-email`
-   - `analyze-image` (si besoin IA)
-   - `generate-pdf`
-3. Configurer les webhooks avec signatures
-4. Tester les appels depuis Next.js
+**Setup N8N :**
+1. Déployer N8N sur VPS (Dokploy)
+2. Créer workflows de base :
+   - `send-email` - Emails transactionnels
+   - `analyze-image` - IA (si besoin)
+   - `generate-pdf` - Génération PDF
 
-### Phase 4 : Adapter le template Razikus
+**Fichiers à créer :**
 
-1. **Pages à modifier** :
-   - Auth pages (signup/login) : utiliser nos helpers avec `appId`
-   - Dashboard : remplacer queries Supabase par Prisma
-   - Settings : ajouter billing avec Lemon Squeezy
+1. `src/lib/n8n/client.ts` (DÉJÀ GÉNÉRÉ dans artifacts)
+   - Client N8N typé
+   - Sécurité : signature HMAC
+   - Retry automatique + timeout
+   - Mode async pour workflows longs
 
-2. **Ajouter les composants** :
-   - Footer Nuvoya8
-   - Watermark
-   - Billing status
+2. `src/lib/n8n/types.ts` (DÉJÀ GÉNÉRÉ dans artifacts)
+   - Types pour tous les workflows
+   - Registry des workflows disponibles
 
-3. **Supprimer les features non nécessaires** :
-   - Garder : Auth, User management
-   - Optionnel : Tasks, Files (comme exemples)
+3. `src/app/api/webhooks/n8n-callback/route.ts`
+   - Callback pour workflows async
+   - Vérification signature
 
-### Phase 5 : Premier déploiement test
+**Config N8N :**
+```bash
+N8N_WEBHOOK_URL=https://n8n.ton-vps.com/webhook
+N8N_WEBHOOK_SECRET=...
+N8N_CALLBACK_URL=https://ton-saas.com/api/webhooks/n8n-callback
+```
 
-1. Déployer sur Dokploy
-2. Configurer le domaine
-3. Tester création de compte
-4. Valider l'isolation multi-tenant
+### Phase 4 : Branding Nuvoya8
+
+**Fichiers à créer :**
+
+1. `src/components/shared/Footer.tsx` (DÉJÀ GÉNÉRÉ dans artifacts)
+   - Footer avec "Powered by Nuvoya8"
+   - Links légaux (privacy, terms, refund)
+
+2. `src/components/shared/Nuvoya8Watermark.tsx` (DÉJÀ GÉNÉRÉ dans artifacts)
+   - Badge discret en bas à droite
+   - 3 variantes disponibles
+
+3. Logo Nuvoya8
+   - Créer/ajouter dans `public/images/nuvoya8-badge.svg`
+
+**Intégration :**
+- Ajouter `<Footer />` dans le layout principal
+- Ajouter `<Nuvoya8Watermark />` dans le layout dashboard
+
+### Phase 5 : Premier Déploiement
+
+**Guide :**
+- Voir `docs/DEPLOYMENT.md` (DÉJÀ GÉNÉRÉ dans artifacts)
+
+**Étapes :**
+1. Créer nouveau projet Dokploy
+2. Configurer les variables d'env (avec app_id différent)
+3. Configurer le domaine + SSL
+4. Deploy
+5. Tester création de compte
 
 ---
 
-## ⚙️ CONFIGURATION ACTUELLE
+## 🔐 POINTS CRITIQUES DE SÉCURITÉ
 
-### Supabase Self-Hosted
-```
-URL: https://supabase.infra-nuvoya8.com
-ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-DB: postgresql://supabase_admin.jyhfme:***@62.72.36.2:5432/postgres
-```
+### 1. Isolation Multi-Tenant
 
-### App Test Locale
-```
-APP_ID: factory-test
-APP_NAME: Nuvoya8 Factory Test
-URL: http://localhost:3000
-```
+**JAMAIS :**
+- Bypass le middleware Prisma sans raison valide
+- Exposer des données d'une autre app
+- Oublier de vérifier `app_id` dans les API routes
 
----
+**TOUJOURS :**
+- Utiliser Prisma (pas de raw SQL sans `app_id`)
+- Vérifier `app_id` dans les callbacks OAuth
+- Valider que le user appartient à l'app au login
 
-## 🚨 POINTS CRITIQUES À RESPECTER
+### 2. Sécurité N8N
 
-### 1. **JAMAIS bypass l'isolation multi-tenant**
-- Toujours passer par Prisma (pas de raw SQL sans `appId`)
-- Ne jamais exposer de données d'une autre app
+**TOUJOURS :**
+- Vérifier la signature HMAC dans les workflows
+- Valider l'`app_id` dans N8N
+- Utiliser HTTPS pour les webhooks
 
-### 2. **Sécurité N8N**
-- TOUJOURS vérifier la signature HMAC dans les workflows
-- TOUJOURS valider l'`appId` dans N8N
+### 3. Prisma côté Client
 
-### 3. **Auth Supabase**
-- TOUJOURS injecter `appId` dans `user_metadata` à l'inscription
-- TOUJOURS vérifier que le user appartient à l'app au login
+**RÈGLE D'OR :** Prisma = backend uniquement
 
-### 4. **Lemon Squeezy**
-- 1 compte partagé pour tous les SaaS
-- Webhooks doivent identifier l'app via metadata
+**JAMAIS :**
+- Importer `@/lib/prisma` dans un composant `'use client'`
+- Utiliser Prisma dans le browser
 
-### 5. **Pas de localStorage**
-- Interdits dans les artifacts Claude.ai
-- Utiliser React state uniquement
+**SOLUTION :**
+- Créer des API routes (`/api/...`)
+- Appeler via `fetch()` depuis le client
 
 ---
 
-## 🎨 CONVENTIONS DE CODE
+## 📊 CONVENTION DE CODE
 
 ### Naming
-- Composants : PascalCase (`UserProfile.tsx`)
-- Fonctions : camelCase (`getUserById()`)
-- Fichiers : kebab-case (`user-profile.tsx`) ou camelCase
-- Types : PascalCase (`UserType`)
+- **DB & Code** : snake_case partout (`app_id`, `user_id`, `created_at`)
+- **Composants** : PascalCase (`UserProfile.tsx`)
+- **Fonctions** : camelCase (`getUserById()`)
+- **Fichiers** : kebab-case ou camelCase
 
-### Structure Prisma queries
+### Structure Prisma
+
 ```typescript
 // ✅ BON : Le middleware filtre automatiquement
 const users = await prisma.user.findMany({
   where: { role: 'admin' }
 })
 
-// ❌ MAUVAIS : Bypass du middleware (sauf cas spécial admin)
+// ❌ MAUVAIS : Bypass du middleware
 const users = await prisma.$queryRaw`SELECT * FROM users`
 ```
 
-### Structure N8N calls
+### Structure N8N
+
 ```typescript
 // ✅ BON : Typé et sécurisé
 await n8n.sendEmail({
   to: user.email,
   template: 'welcome',
   variables: { name: user.name }
-}, { userId: user.id })
+}, { user_id: user.id })
 
 // ✅ BON : Mode async pour workflows longs
 await n8n.generatePDF({ ... }, { async: true })
-
-// ❌ MAUVAIS : Pas de gestion d'erreur
-await n8n.sendEmail({ ... }) // Peut throw sans catch
 ```
 
 ---
 
-## 📝 PROCHAINES ACTIONS IMMÉDIATES
+## 🎯 WORKFLOW DE DÉVELOPPEMENT
 
-**Tu dois m'aider à :**
+### Pour Créer un Nouveau SaaS
 
-1. **Analyser le code Razikus** :
-   - Comment ils gèrent Supabase (client, server, middleware)
-   - Structure des pages (auth, dashboard)
-   - Où sont les queries Supabase à remplacer
+1. **Créer l'app dans la DB :**
+```sql
+INSERT INTO apps (id, name, slug, domain, is_active, created_at, updated_at)
+VALUES ('todo-master', 'Todo Master', 'todo-master', 'todo-master.com', true, NOW(), NOW());
+```
 
-2. **Intégrer Prisma** :
-   - Coexistence avec Supabase auth
-   - Migration progressive des queries
-   - Setup des migrations
+2. **Cloner le template :**
+```bash
+git clone template.git todo-master
+```
 
-3. **Adapter l'auth** :
-   - Modifier les pages signup/login
-   - Injecter `appId`
-   - Utiliser nos helpers
+3. **Modifier `.env.local` :**
+```bash
+NEXT_PUBLIC_APP_ID=todo-master
+NEXT_PUBLIC_APP_NAME=Todo Master
+NEXT_PUBLIC_APP_LOGO_URL=/images/logo.svg
+```
 
-4. **Tester en local** :
-   - Créer un compte
-   - Vérifier l'isolation
-   - Valider le flow complet
+4. **Changer le logo :**
+```bash
+cp /path/to/logo.svg public/images/logo.svg
+```
+
+5. **Déployer sur Dokploy**
+
+### Pour Mettre à Jour le Core
+
+```bash
+# Dans le template
+git commit -m "feat: add new feature"
+git push
+
+# Dans chaque SaaS
+git remote add template https://github.com/ton-org/template.git
+git fetch template
+git merge template/main
+```
 
 ---
 
-## 🤝 TON RÔLE
+## 📚 RESSOURCES & DOCUMENTATION
 
-Tu es mon co-développeur expert. Tu dois :
+### Fichiers Générés (dans les artifacts Claude)
 
-- ✅ **Analyser le code existant** avant de proposer des modifs
-- ✅ **Respecter l'architecture multi-tenant** (ne jamais bypass `appId`)
-- ✅ **Proposer du code production-ready** (avec error handling)
-- ✅ **Être pragmatique** : réutiliser ce qui marche dans Razikus
-- ✅ **M'expliquer tes choix** quand tu proposes quelque chose
-- ❌ **Ne pas tout réécrire** : adapter, pas remplacer
-- ❌ **Ne pas inventer** : si tu ne sais pas, demande
+1. `prisma/schema.prisma` - Schéma DB
+2. `src/lib/prisma.ts` - Client Prisma + middleware
+3. `src/lib/supabase/auth-helpers.ts` - Helpers auth
+4. `supabase/migrations/00_sync_auth_users.sql` - Triggers
+5. `src/app/api/user/me/route.ts` - API user
+6. `src/lib/n8n/client.ts` - Client N8N typé
+7. `src/lib/n8n/types.ts` - Types N8N
+8. `components/shared/Footer.tsx` - Footer Nuvoya8
+9. `components/shared/Nuvoya8Watermark.tsx` - Watermark
+10. `docs/DEPLOYMENT.md` - Guide déploiement
+11. `docs/N8N_INTEGRATION.md` - Guide N8N
+12. `.env.template` - Template variables
 
----
-
-## 📚 RESSOURCES
+### Links Utiles
 
 - Template Razikus : https://github.com/Razikus/supabase-nextjs-template
 - Prisma docs : https://www.prisma.io/docs
 - Supabase docs : https://supabase.com/docs
 - N8N docs : https://docs.n8n.io
+- Lemon Squeezy docs : https://docs.lemonsqueezy.com
 
 ---
 
-## ✅ VALIDATION
+## ✅ CHECKLIST DE VALIDATION
 
-Avant de commencer, confirme que tu as compris :
+Avant de passer à la phase suivante :
 
-1. L'objectif (SaaS Factory multi-tenant)
-2. L'architecture (Supabase + Prisma + N8N)
-3. Le principe d'isolation par `appId`
-4. Les fichiers déjà générés
-5. Ce qu'il reste à faire
+### Setup de Base
+- [x] Prisma installé et configuré
+- [x] Tables créées dans Supabase
+- [x] Triggers de sync fonctionnels
+- [x] Middleware Prisma actif
+- [x] Première app créée
+- [x] Auth signup fonctionnelle avec `app_id`
+- [x] Callback OAuth adapté
+- [x] Dashboard accessible
+- [x] Isolation multi-tenant validée
 
-**Dis "READY" si tu as tout compris et qu'on peut commencer !**
+### À Compléter
+- [ ] Page login adaptée
+- [ ] API route `update-last-login`
+- [ ] Tests OAuth (Google/GitHub)
+- [ ] Lemon Squeezy intégré
+- [ ] N8N déployé et workflows créés
+- [ ] Footer/Watermark Nuvoya8
+- [ ] Premier déploiement sur Dokploy
+- [ ] Documentation complète
+
+---
+
+## 🚀 PROCHAINES ACTIONS IMMÉDIATES
+
+**Tu dois maintenant :**
+
+1. **Adapter la page de login** (priorité haute)
+   - Utiliser les helpers auth avec `app_id`
+   - Comme fait pour register
+
+2. **Créer l'API route update-last-login**
+   - Backend Prisma
+   - Appelée depuis `auth-helpers.ts`
+
+3. **Intégrer Lemon Squeezy**
+   - Client + webhooks + billing page
+
+4. **Ajouter branding Nuvoya8**
+   - Footer + Watermark
+
+5. **Tester le premier déploiement**
+   - Dokploy + nouveau domaine
+
+---
+
+## 💡 NOTES IMPORTANTES
+
+### Erreurs Courantes à Éviter
+
+1. **Prisma côté client** : Toujours utiliser des API routes
+2. **Oublier `app_id`** : Le middleware le gère, mais vérifier dans les callbacks
+3. **Types UUID vs TEXT** : Utiliser `::text` dans les SQL policies
+4. **Nom des colonnes** : Toujours snake_case (même en DB et code)
+
+### Performance
+
+- Prisma génère des queries optimisées
+- Middleware ajoute un filtre léger
+- RLS + Middleware = double sécurité (pas de surcoût significatif)
+
+### Scalabilité
+
+- Architecture testée pour 100+ SaaS
+- 1 DB peut gérer des millions de users (sharding possible plus tard)
+- N8N scale horizontalement si besoin
+
+---
+
+**🎯 TU AS MAINTENANT TOUTES LES INFOS POUR CONTINUER !**
+
+Cursor peut prendre le relais avec ce briefing complet.

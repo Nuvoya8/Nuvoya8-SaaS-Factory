@@ -62,7 +62,11 @@ export class N8nClient {
 
   constructor(baseUrl?: string, secret?: string) {
     this.baseUrl = baseUrl || N8N_BASE_URL
-    this.secret = secret || N8N_SECRET
+    this.secret = secret || N8N_SECRET || ''
+    
+    if (!this.secret) {
+      throw new Error('N8N_WEBHOOK_SECRET must be provided')
+    }
   }
 
   /**
