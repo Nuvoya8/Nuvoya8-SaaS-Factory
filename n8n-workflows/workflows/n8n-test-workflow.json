@@ -1,0 +1,107 @@
+{
+  "name": "test-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-workflow",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e5e0ac47-c18e-43e2-9919-1556222a9af0",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "86d09136-62d2-48e8-a19e-5ccc82298dde"
+    },
+    {
+      "parameters": {
+        "functionCode": "const crypto = require('crypto');\n\n// Récupérer les données\nconst body = $input.item.json;\nconst headers = $input.item.headers;\nconst signature = headers['x-signature'];\n\n// Secret partagé (IMPORTANT: Même valeur que dans .env.local)\nconst secret = 'bc2beb8c44ca42b06249ac055ad80b6dcd63529230693dac45aeb1cde4759e3a';\n\n// Calculer la signature attendue\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(JSON.stringify(body))\n  .digest('hex');\n\n// Vérifier la signature\nif (signature !== expectedSignature) {\n  throw new Error('❌ Invalid HMAC signature - Unauthorized');\n}\n\n// Vérifier app_id\nconst appId = body.metadata?.appId;\nif (!appId) {\n  throw new Error('❌ Missing app_id in metadata');\n}\n\nconsole.log('✅ Signature HMAC valide');\nconsole.log('✅ App ID:', appId);\n\n// Tout est OK, passer les données au nœud suivant\nreturn $input.item;"
+      },
+      "id": "6dc3496a-a655-4162-8b7d-5ca9475f158b",
+      "name": "Vérifier Signature HMAC",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = $input.item.json.data;\nconst metadata = $input.item.json.metadata;\n\nconsole.log('📥 Message reçu:', data.message);\nconsole.log('👤 User ID:', metadata.userId);\n\nreturn {\n  json: {\n    success: true,\n    data: {\n      message: '🎉 Workflow N8N exécuté avec succès !',\n      receivedMessage: data.message,\n      timestamp: data.timestamp,\n      appId: metadata.appId,\n      userId: metadata.userId,\n      processedAt: new Date().toISOString(),\n      workflowVersion: 'v1.0.0',\n      serverInfo: {\n        n8n: 'Nuvoya8 Factory',\n        environment: 'production'\n      }\n    }\n  }\n};"
+      },
+      "id": "d3b5234b-e497-429d-bd7f-97fba33226b4",
+      "name": "Traiter la Requête",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "ef3903cf-2e91-4c01-b04d-cb1de6472911",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Vérifier Signature HMAC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vérifier Signature HMAC": {
+      "main": [
+        [
+          {
+            "node": "Traiter la Requête",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traiter la Requête": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "7d8d7d10-c532-4980-8e70-9e65e9a63ce0",
+  "id": "d6c066cf-c878-45a8-a43e-3eeca28d94e1",
+  "meta": {
+    "instanceId": "35ec2391-57e9-4528-be83-dd83fe147c66"
+  },
+  "tags": []
+}

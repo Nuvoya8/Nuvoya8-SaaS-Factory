@@ -1,0 +1,125 @@
+{
+  "name": "test-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-workflow",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "hmac-microservice-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraire les données du webhook\nconst headers = $input.item.json.headers;\nconst body = $input.item.json.body;\nconst receivedSignature = headers['x-signature'];\n\n// Logs\nconsole.log('📥 Requête reçue');\nconsole.log('🔐 Signature reçue:', receivedSignature);\n\nif (!receivedSignature) {\n  throw new Error('❌ Missing X-Signature header');\n}\n\n// Préparer les données pour le micro-service HMAC\nconst bodyString = JSON.stringify(body);\n\nreturn {\n  json: {\n    receivedSignature: receivedSignature,\n    bodyString: bodyString,\n    originalBody: body,\n    headers: headers\n  }\n};"
+      },
+      "id": "extract-data",
+      "name": "Extraire Données",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer le body pour l'appel au micro-service HMAC\nconst bodyString = $input.item.json.bodyString;\nconst secret = 'bc2beb8c44ca42b06249aaaa950dfaf2ca94c0f4bad0d4c3c40a9c9afa6d3f33';\n\n// DEBUG : Afficher le bodyString dans la sortie\nreturn {\n  json: {\n    message: bodyString,\n    secret: secret,\n    algorithm: 'sha256',\n    // DEBUG : Afficher les données pour debug\n    _debug_bodyString: bodyString,\n    _debug_receivedSignature: $input.item.json.receivedSignature,\n    // Garder les données originales pour plus tard\n    _receivedSignature: $input.item.json.receivedSignature,\n    _originalBody: $input.item.json.originalBody\n  }\n};"
+      },
+      "id": "prepare-hmac-request",
+      "name": "Préparer Requête HMAC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.17.0.1:3010/hmac",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "name": "secret",
+              "value": "={{ $json.secret }}"
+            },
+            {
+              "name": "algorithm",
+              "value": "={{ $json.algorithm }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "call-hmac-service",
+      "name": "Calculer HMAC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Récupérer les données depuis les bons nœuds\nconst receivedSignature = $('Préparer Requête HMAC').item.json._receivedSignature;\nconst calculatedHmac = $input.item.json.hmac;\nconst originalBody = $('Préparer Requête HMAC').item.json._originalBody;\n\nconsole.log('🔍 === DEBUG DONNÉES ===');\nconsole.log('🔐 Signature reçue:', receivedSignature);\nconsole.log('🔐 HMAC calculé:', calculatedHmac);\nconsole.log('📦 Original body:', JSON.stringify(originalBody, null, 2));\nconsole.log('🔍 Type receivedSignature:', typeof receivedSignature);\nconsole.log('🔍 Type calculatedHmac:', typeof calculatedHmac);\nconsole.log('🔍 === FIN DEBUG ===');\n\n// Vérifier la signature\nif (receivedSignature !== calculatedHmac) {\n  console.error('❌ Les signatures ne correspondent pas!');\n  console.error('Reçu:', receivedSignature);\n  console.error('Attendu:', calculatedHmac);\n  throw new Error('Invalid HMAC signature - Unauthorized');\n}\n\n// Vérifier app_id\nconst appId = originalBody.metadata?.appId;\nif (!appId) {\n  throw new Error('Missing app_id in metadata');\n}\n\nconsole.log('✅ App ID validé:', appId);\nconsole.log('✅ Signature HMAC valide!');\n\n// Passer les données au nœud suivant\nreturn { json: originalBody };"
+      },
+      "id": "verify-signature",
+      "name": "Vérifier Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Traiter la requête de manière sécurisée\n\nconst data = $input.item.json.data;\nconst metadata = $input.item.json.metadata;\n\nconsole.log('📥 Message:', data.message);\nconsole.log('👤 User:', metadata.userId);\nconsole.log('🏢 App:', metadata.appId);\n\nreturn {\n  json: {\n    success: true,\n    data: {\n      message: '🎉 Workflow N8N exécuté avec succès (SÉCURISÉ) !',\n      receivedMessage: data.message,\n      receivedTimestamp: data.timestamp,\n      appId: metadata.appId,\n      userId: metadata.userId,\n      processedAt: new Date().toISOString(),\n      workflowInfo: {\n        name: 'test-workflow',\n        version: '2.0.0',\n        environment: 'production',\n        security: '🔐 HMAC SHA-256 Verified (via Micro-service)',\n        securityLevel: 'HIGH',\n        hmacService: 'External HMAC Microservice'\n      }\n    }\n  }\n};"
+      },
+      "id": "process-request",
+      "name": "Traiter la Requête",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Extraire Données", "type": "main", "index": 0 }]]
+    },
+    "Extraire Données": {
+      "main": [[{ "node": "Préparer Requête HMAC", "type": "main", "index": 0 }]]
+    },
+    "Préparer Requête HMAC": {
+      "main": [[{ "node": "Calculer HMAC", "type": "main", "index": 0 }]]
+    },
+    "Calculer HMAC": {
+      "main": [[{ "node": "Vérifier Signature", "type": "main", "index": 0 }]]
+    },
+    "Vérifier Signature": {
+      "main": [[{ "node": "Traiter la Requête", "type": "main", "index": 0 }]]
+    },
+    "Traiter la Requête": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,46 +1,39 @@
 /**
  * API Route de Test N8N
- * Endpoint pour tester la communication avec N8N
+ * Endpoint SIMPLIFIÉ pour tester UNIQUEMENT la communication avec N8N
+ * Pas d'authentification pour faciliter les tests
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { n8n } from '@/lib/n8n/client'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   try {
-    // Vérifier l'auth
-    const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: authError } = await supabase.auth.getSession()
-
-    if (authError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
     // Récupérer les données du body
     const body = await req.json()
     const { message } = body
 
-    // Appeler un workflow N8N custom pour le test
+    console.log('📤 Envoi vers N8N:', { message })
+
+    // Appeler le workflow N8N
     const result = await n8n.custom('test-workflow', {
       message: message || 'Hello from Nuvoya8 Factory!',
       timestamp: new Date().toISOString(),
     }, {
-      userId: session.user.id,
+      userId: 'test-user',
       timeout: 10000, // 10 secondes
     })
 
+    console.log('📥 Réponse de N8N:', JSON.stringify(result, null, 2))
+
     return NextResponse.json({
       success: true,
-      data: result.data,
+      fullResult: result,           // TOUT ce que N8N retourne
+      data: result.data,             // Les données spécifiques
       appId: process.env.NEXT_PUBLIC_APP_ID,
-      userId: session.user.id,
     })
   } catch (error: any) {
-    console.error('N8N test error:', error)
+    console.error('❌ Erreur N8N:', error)
     
     return NextResponse.json(
       { 

@@ -1,0 +1,53 @@
+{
+  "name": "test-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-workflow",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "debug-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Workflow de DEBUG - Affiche tout ce qui arrive\n\nconst input = $input.item.json;\n\n// Extraire les informations importantes\nconst headers = input.headers || {};\nconst body = input.body || {};\nconst signature = headers['x-signature'] || 'NO_SIGNATURE';\n\nconsole.log('=== DEBUG N8N ===');\nconsole.log('Headers:', JSON.stringify(headers, null, 2));\nconsole.log('Body:', JSON.stringify(body, null, 2));\nconsole.log('Signature:', signature);\n\n// Retourner TOUJOURS une réponse (même s'il y a une erreur)\nreturn {\n  json: {\n    success: true,\n    debug: {\n      message: '🔍 Workflow de debug - Voici ce que N8N a reçu',\n      receivedHeaders: headers,\n      receivedBody: body,\n      signature: signature,\n      timestamp: new Date().toISOString()\n    }\n  }\n};"
+      },
+      "id": "debug-code",
+      "name": "Debug - Afficher Tout",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Debug - Afficher Tout", "type": "main", "index": 0 }]]
+    },
+    "Debug - Afficher Tout": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+
