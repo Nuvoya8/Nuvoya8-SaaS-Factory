@@ -16,6 +16,7 @@ const N8N_BASE_URL = process.env.N8N_WEBHOOK_URL || 'https://n8n.ton-vps.com/web
 const N8N_SECRET = process.env.N8N_WEBHOOK_SECRET
 
 if (!N8N_SECRET) {
+
   throw new Error('N8N_WEBHOOK_SECRET must be defined in environment variables')
 }
 
